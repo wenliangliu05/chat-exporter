@@ -92,6 +92,58 @@ ChatGPT 可点「在线体检」调 `/api/auth/session` 拿到 plan 与过期时
 
 ---
 
+## 本地记忆与数据安全
+
+### 本地记忆：不用每次重新配置
+
+上次用的**数据目录、平台、快照、会话**会被记住，重开浏览器直接回到原位。
+记忆文件在**用户目录**（不在仓库里，天生无法被提交）：
+
+```
+Windows   C:\Users\<你>\.chatexporter\settings.json
+Linux/macOS  ~/.chatexporter/settings.json
+```
+
+内容只有 4 个"界面还原"字段，**不含 Cookie、不含消息正文**：
+
+```json
+{ "lastProfile": "D:/ChatVault", "lastPlatform": "doubao",
+  "lastSnapshotId": 3, "lastConversationId": 128 }
+```
+
+启动时的目录选择顺序：**配置里的绝对路径 > 本地记忆 > 按代码位置智能定位**。
+界面左上角会直接显示这套记忆的文件路径，方便确认"它真的只在本地"。
+
+### 三道闸：本地数据绝不入库
+
+| 闸门 | 位置 | 作用 |
+|---|---|---|
+| **① .gitignore** | 仓库根 | 显式列出 `data/`、`*.db`、`cookie*.txt`、`*.log`、`.chatexporter/`、`.env` 等 |
+| **② pre-commit 钩子** | `.githooks/pre-commit` | 提交瞬间再查**路径 + 内容 + 体积**：命中 Cookie/Token 特征、`data/` 路径、>5MB 文件 → **直接拒绝提交** |
+| **③ CI 扫描** | `.github/workflows/ci.yml` | 就算本地跳过了钩子，CI 也会把构建打红 |
+
+`.gitignore` 只防"未跟踪文件"；一旦有人 `git add -f`，它就失效了 —— 这就是需要 ②③ 的原因。
+
+启用钩子（每个 clone 跑一次）：
+
+```bash
+scripts/setup-hooks.sh          # macOS / Linux / Git Bash
+scripts\setup-hooks.cmd         # Windows
+# 等价于：git config core.hooksPath .githooks
+```
+
+### 什么会入库，什么不会
+
+| 内容 | 位置 | 入库 |
+|---|---|---|
+| 源码、包名、README、CI、钩子 | 仓库 | ✅ |
+| Cookie（账号登录态） | `<profile>/cookie-*.txt` | ❌ |
+| 快照库 `snapshot.db` | `<profile>/` | ❌ |
+| 导出的 Markdown / 日志 | `<profile>/markdown`、`logs` | ❌ |
+| 本地记忆 | `~/.chatexporter/settings.json` | ❌（在仓库外）|
+
+---
+
 ## 架构
 
 ```

@@ -5,6 +5,7 @@ import com.lion.chatexporter.adapter.ChatPlatformAdapter;
 import com.lion.chatexporter.adapter.openai.OpenAiAdapter;
 import com.lion.chatexporter.config.AppProperties;
 import com.lion.chatexporter.config.ProfileContext;
+import com.lion.chatexporter.config.UserSettings;
 import com.lion.chatexporter.repository.SnapshotRepository;
 import org.springframework.stereotype.Service;
 
@@ -35,13 +36,44 @@ public class ProfileService {
     private final AppProperties props;
     private final SnapshotRepository repo;
     private final List<ChatPlatformAdapter> adapters;
+    private final UserSettings settings;
 
     public ProfileService(ProfileContext ctx, AppProperties props,
-                          SnapshotRepository repo, List<ChatPlatformAdapter> adapters) {
+                          SnapshotRepository repo, List<ChatPlatformAdapter> adapters,
+                          UserSettings settings) {
         this.ctx = ctx;
         this.props = props;
         this.repo = repo;
         this.adapters = adapters;
+        this.settings = settings;
+    }
+
+    /** 本地记忆（界面还原用），以及它的存放位置（供界面展示，便于确认"没上网"） */
+    public Map<String, Object> settingsView() {
+        return settings.view();
+    }
+
+    /** 界面状态更新：{platform?, snapshotId?, conversationId?} */
+    public Map<String, Object> updateSettings(Map<String, Object> patch) {
+        String platform = patch.get("platform") == null ? null : String.valueOf(patch.get("platform"));
+        Long snapshotId = asLong(patch.get("snapshotId"));
+        Long conversationId = asLong(patch.get("conversationId"));
+        settings.rememberUi(platform, snapshotId, conversationId);
+        return settings.view();
+    }
+
+    private Long asLong(Object o) {
+        if (o instanceof Number n) {
+            return n.longValue();
+        }
+        if (o instanceof String s && !s.isBlank()) {
+            try {
+                return Long.parseLong(s.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     /** 当前 profile 的完整状态（给前端首屏用） */
@@ -60,6 +92,7 @@ public class ProfileService {
         m.put("messageCount", msgs);
         m.put("snapshots", snaps);
         m.put("cookies", cookieStatuses());
+        m.put("settings", settings.view());
         return m;
     }
 

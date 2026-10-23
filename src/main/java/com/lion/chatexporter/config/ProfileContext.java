@@ -38,17 +38,38 @@ public class ProfileContext {
     private static final Logger log = LoggerFactory.getLogger(ProfileContext.class);
 
     private final AppProperties props;
+    private final UserSettings settings;
 
     private volatile String dir;
     private volatile JdbcTemplate jdbc;
 
-    public ProfileContext(AppProperties props) {
+    public ProfileContext(AppProperties props, UserSettings settings) {
         this.props = props;
+        this.settings = settings;
     }
 
+    /**
+     * 启动时的选择顺序：
+     * <ol>
+     *   <li>配置里给了<b>绝对路径</b> → 以配置为准（显式指定最高优先级）</li>
+     *   <li>本地记忆里的上次目录仍然存在 → 用它（这样重开不用重新配置）</li>
+     *   <li>否则智能定位项目根下的 data（见 resolveDataDir）</li>
+     * </ol>
+     */
     @PostConstruct
     public void init() {
-        activate(resolveDataDir(props.dataDir()));
+        String configured = props.dataDir();
+        if (Path.of(configured).isAbsolute()) {
+            activate(configured);
+            return;
+        }
+        String remembered = settings.lastProfile();
+        if (remembered != null && Files.isDirectory(Path.of(remembered))) {
+            log.info("沿用上次的数据目录（本地记忆）: {}", remembered);
+            activate(remembered);
+            return;
+        }
+        activate(resolveDataDir(configured));
     }
 
     /**
@@ -128,6 +149,7 @@ public class ProfileContext {
 
         this.dir = p.toString();
         this.jdbc = t;
+        settings.rememberProfile(this.dir);   // 下次启动直接回到这里
         log.info("当前 profile: {}（库 {}）", this.dir, dbPath());
     }
 

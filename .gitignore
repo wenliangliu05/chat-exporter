@@ -34,3 +34,35 @@ build/
 
 # 运行时数据（快照库 / Markdown / 日志）
 data/
+
+# ============================================================
+# 本地数据与凭据 —— 绝不允许入库（显式规则，不依赖前面的通配）
+# ============================================================
+# 快照库 / 导出的 Markdown / 资源 / 日志
+data/
+**/snapshot.db
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+# 各平台 Cookie（等同账号登录态）
+cookie*.txt
+**/cookie*.txt
+.env
+.env.*
+!.env.example
+# 日志与临时产物
+*.log
+logs/
+*.tmp
+*.bak
+# 本地记忆 / 个人 IDE 配置 / 本机脚本
+.chatexporter/
+*.local.json
+.idea/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+Thumbs.db

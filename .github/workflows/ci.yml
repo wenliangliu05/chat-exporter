@@ -2,32 +2,44 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
+    name: 构建 / 测试 / 隐私扫描
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      - name: 隐私扫描（凭据不许入库）
+        run: |
+          echo "扫描所有跟踪文件中的凭据特征…"
+          if git grep -nEI \
+            'sessionid=[0-9a-f]{16,}|oai-did=[0-9a-f-]{16,}|sid_guard=[A-Za-z0-9%|_-]{20,}|__Secure-next-auth\.session-token\.[0-9]=|cf_clearance=[A-Za-z0-9%._-]{20,}|Bearer [A-Za-z0-9._-]{40,}|sk-[A-Za-z0-9]{24,}' \
+            -- . ':!.githooks' ':!*.md' ; then
+            echo "::error::发现疑似 Cookie / Token，请立即移除并轮换凭据"
+            exit 1
+          fi
+          echo "✓ 未发现凭据"
+
+      - name: 数据目录不许入库
+        run: |
+          bad=$(git ls-files | grep -Ei '(^|/)(data|logs)/|(^|/)snapshot\.db$|\.db(-wal|-shm)?$|(^|/)cookie[^/]*\.txt$|\.log$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::以下本地数据被提交了："
+            echo "$bad"
+            exit 1
+          fi
+          echo "✓ 无本地数据入库"
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '17'
-          distribution: 'temurin'
           cache: maven
 
-      # 测试用 mock 适配器，不联网、不需要任何 Cookie
-      - name: Run tests
+      - name: 构建与测试（mock 适配器，不联网、无需凭据）
         run: ./mvnw -B test
-
-      - name: Package
-        run: ./mvnw -B -DskipTests package
-
-      - name: Upload jar
-        uses: actions/upload-artifact@v4
-        with:
-          name: ChatExporter-jar
-          path: target/*.jar
-          retention-days: 7
