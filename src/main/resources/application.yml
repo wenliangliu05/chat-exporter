@@ -1,0 +1,51 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: ChatExporter
+  # 数据源由 ProfileContext 按 profile 目录动态创建（支持运行时切换）
+  rabbitmq:
+    host: 127.0.0.1
+    port: 5672
+    username: guest
+    password: guest
+    listener:
+      simple:
+        prefetch: 1                 # 一次只给消费者一个会话，进度才平滑
+        concurrency: ${app.concurrency}
+        max-concurrency: ${app.concurrency}
+        # 消息处理失败不要无限重投（否则异常会刷爆日志，曾出现 8GB 日志）
+        default-requeue-rejected: false
+
+app:
+  data-dir: ./data
+  platform: mock
+  concurrency: 4
+  request-interval-ms: 300
+  max-pages: 200
+  queue:
+    enabled: true                   # false = 退回本地线程池（测试/无 broker 时）
+  doubao:
+    cookie: ""                      # 留空则自动读 data/cookie-doubao.txt → data/cookie.txt
+    cookie-file: ./data/cookie-doubao.txt
+    base-url: https://www.doubao.com
+    extra-conversation-ids: ""
+    page-limit: 50
+    batch-size: 20
+
+  openai:
+    cookie: ""                      # 留空则自动读 data/cookie-openai.txt → data/cookie.txt
+    base-url: https://chatgpt.com
+
+logging:
+  level:
+    root: INFO
+    com.lion.chatexporter: DEBUG
+  file:
+    name: ${app.data-dir}/logs/app.log
+  logback:
+    rollingpolicy:
+      max-file-size: 20MB
+      max-history: 3
+      total-size-cap: 60MB

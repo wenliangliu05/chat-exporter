@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChatExporter · 对话归档与检索</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#121821; --panel2:#18202c; --panel3:#1e2836; --line:#232d3c;
+    --txt:#e6edf8; --dim:#8b98ad; --dim2:#5d6a7e;
+    --acc:#5b8cff; --acc2:#8b6bff; --ok:#3ddc84; --warn:#f5b544; --bad:#f0716f;
+  }
+  *{box-sizing:border-box}
+  html{background:var(--bg)}
+  body{
+    margin:0;min-height:100vh;color:var(--txt);
+    background:
+      radial-gradient(1100px 520px at 12% -12%, #16233d 0%, transparent 60%),
+      radial-gradient(900px 480px at 92% -6%, #221a3a 0%, transparent 55%),
+      var(--bg);
+    background-attachment:fixed;
+    font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  a{color:var(--acc)}
+  header{
+    position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;
+    padding:14px 26px;border-bottom:1px solid var(--line);
+    background:rgba(11,14,20,.85);backdrop-filter:blur(14px);
+  }
+  .logo{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:13px;color:#fff;background:linear-gradient(135deg,var(--acc),var(--acc2));
+    box-shadow:0 6px 18px -8px var(--acc)}
+  .brand h1{font-size:15px;margin:0}
+  .brand p{margin:1px 0 0;font-size:11px;color:var(--dim2)}
+  .grow{flex:1}
+  .status{font-size:12px;color:var(--dim);border:1px solid var(--line);background:var(--panel);
+    padding:5px 12px;border-radius:20px;display:flex;align-items:center;gap:7px}
+  .status i{width:7px;height:7px;border-radius:50%;background:var(--dim2)}
+  .status.run i{background:var(--warn);animation:pulse 1.2s infinite}
+  .status.ok i{background:var(--ok)} .status.err i{background:var(--bad)}
+  @keyframes pulse{50%{opacity:.3}}
+
+  .wrap{display:grid;grid-template-columns:376px 336px 1fr;gap:14px;padding:16px 24px 40px;align-items:stretch}
+  .wrap > .card{min-height:calc(100vh - 150px)}
+  @media (max-width:1360px){ .wrap{grid-template-columns:360px 1fr} .col-msg{grid-column:1/-1} }
+  @media (max-width:900px){ .wrap{grid-template-columns:1fr} }
+
+  .card{background:linear-gradient(180deg,rgba(255,255,255,.02),transparent),var(--panel);
+    border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    box-shadow:0 18px 40px -32px #000}
+  .card + .card{margin-top:12px}
+  .card-h{display:flex;align-items:center;justify-content:space-between;gap:8px;
+    padding:11px 15px;border-bottom:1px solid var(--line);
+    font-size:12px;font-weight:600;color:var(--dim);letter-spacing:.4px}
+  .card-b{padding:12px 15px 15px}
+
+  /* ---- profile ---- */
+  .path{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:#9fb0c8;
+    background:#0d1420;border:1px solid #1e2a3a;border-radius:8px;padding:7px 9px;
+    word-break:break-all;line-height:1.6}
+  .kv{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;margin-top:9px;font-size:11.5px;color:var(--dim2)}
+  .kv b{color:var(--txt);font-weight:600}
+  .row{display:flex;gap:7px;margin-top:9px}
+
+  .btn{font:600 12.5px inherit;padding:8px 13px;border-radius:9px;border:none;cursor:pointer;
+    background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;transition:.15s}
+  .btn:hover{filter:brightness(1.08)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--dim);font-weight:500}
+  .btn.ghost:hover{color:var(--txt);border-color:#3a4a66}
+  .btn.sm{padding:5px 10px;font-size:11.5px;border-radius:7px}
+  .btn.wide{width:100%;margin-top:12px;padding:10px}
+
+  /* ---- cookie ---- */
+  .ck{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px dashed #1c2533;font-size:12px}
+  .ck:last-child{border-bottom:none}
+  .ck .nm{flex:1}
+  .ck .nm small{display:block;color:var(--dim2);font-size:10.5px}
+  .badge{font-size:10.5px;padding:2px 8px;border-radius:20px;border:1px solid;white-space:nowrap}
+  .badge.ok{color:#9ff0bd;border-color:#256b41;background:#0f2418}
+  .badge.expiring{color:#ffd894;border-color:#6b5524;background:#241d10}
+  .badge.expired{color:#ffb4b4;border-color:#6b3138;background:#2a1619}
+  .badge.missing{color:#8b98ad;border-color:#2b3648;background:#141b26}
+  .badge.unknown{color:#9fc0ff;border-color:#2a4370;background:#111a2b}
+  .ckeditor{margin-top:8px;display:none}
+  .ckeditor.on{display:block}
+  .ckeditor textarea{width:100%;min-height:64px;background:#0f1622;border:1px solid #223047;color:var(--txt);
+    border-radius:8px;padding:8px;font:11px/1.5 ui-monospace,Menlo,monospace;resize:vertical}
+
+  /* ---- 导出 ---- */
+  .platforms{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+  .plat{cursor:pointer;border:1px solid var(--line);background:var(--panel2);border-radius:10px;
+    padding:9px 6px;text-align:center;transition:.15s;user-select:none}
+  .plat:hover{border-color:#3a4a66}
+  .plat.on{border-color:#4a6ea8;background:linear-gradient(180deg,#1d2b45,#16202f);box-shadow:0 0 0 1px #35507c inset}
+  .plat .ico{font-size:15px}
+  .plat .nm{font-size:11.5px;margin-top:2px}
+  .plat .sub{font-size:9.5px;color:var(--dim2)}
+
+  label{display:block;font-size:11px;color:var(--dim);margin:11px 0 4px}
+  input,select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+    border-radius:9px;padding:8px 10px;font:12.5px/1.5 inherit;outline:none}
+  input:focus,select:focus{border-color:#3f5f97;box-shadow:0 0 0 3px rgba(91,140,255,.12)}
+  .hint{font-size:10.5px;color:var(--dim2);margin-top:6px;line-height:1.6}
+
+  .progress{display:none;margin-top:12px}
+  .progress.on{display:block}
+  .bar{height:6px;background:#0d131c;border-radius:5px;overflow:hidden;margin-bottom:8px}
+  .bar i{display:block;height:100%;width:0;border-radius:5px;
+    background:linear-gradient(90deg,var(--acc),var(--ok));transition:width .35s}
+  .metrics{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-size:11px;color:var(--dim2)}
+  .metrics b{color:var(--txt)}
+  .recent{margin-top:7px;max-height:76px;overflow:auto;font-size:10.5px;color:var(--dim2);
+    font-family:ui-monospace,Menlo,monospace;line-height:1.8}
+  .recent div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* ---- 中间：搜索 + 快照 + 会话 ---- */
+  .searchbox{padding:11px 13px;border-bottom:1px solid var(--line)}
+  .searchbox input{padding:9px 11px}
+  .chips{display:flex;gap:6px;overflow-x:auto;padding:9px 12px;border-bottom:1px solid var(--line)}
+  .chip{flex:0 0 auto;font-size:11px;padding:5px 10px;border-radius:20px;cursor:pointer;
+    border:1px solid var(--line);background:var(--panel2);color:var(--dim);white-space:nowrap}
+  .chip.on{border-color:#4a6ea8;color:#cfe0ff;background:#1b2740}
+  .chip small{color:var(--dim2);margin-left:4px}
+
+  ul.list{list-style:none;margin:0;padding:6px;overflow:auto;max-height:calc(100vh - 330px)}
+  ul.list li{padding:9px 11px;border-radius:10px;cursor:pointer;border:1px solid transparent;margin-bottom:2px}
+  ul.list li:hover{background:var(--panel2)}
+  ul.list li.on{background:linear-gradient(180deg,#1c2a44,#17202f);border-color:#31456e}
+  .t{font-size:12.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .m{font-size:10.5px;color:var(--dim2);margin-top:2px;display:flex;gap:6px;flex-wrap:wrap}
+  .empty{padding:26px 16px;text-align:center;color:var(--dim2);font-size:12px;line-height:2}
+
+  /* ---- 消息：气泡 ---- */
+  .msgs{padding:14px 18px 28px;overflow:auto;max-height:calc(100vh - 200px)}
+  .msg{display:flex;margin-bottom:14px;gap:9px}
+  .msg.me{flex-direction:row-reverse}
+  .ava{flex:0 0 26px;height:26px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+    font-size:12px;background:#1d2635;border:1px solid #2a3648}
+  .msg.me .ava{background:#1c2b45;border-color:#2f4668}
+  .bubble{max-width:min(760px,84%);border-radius:14px;padding:10px 14px;
+    background:var(--panel2);border:1px solid #222d3d;font-size:13.2px;line-height:1.75;
+    overflow-wrap:anywhere}
+  .msg.me .bubble{background:linear-gradient(180deg,#1d2c48,#182339);border-color:#2d4468}
+  .bubble.think{background:#161221;border-color:#2e2547;color:#b6a9d6;font-style:italic}
+  .bubble.tool{background:#141b16;border-color:#25402c;font-family:ui-monospace,Menlo,monospace;font-size:11.8px}
+  .bubble .meta{font-size:10px;color:var(--dim2);margin-bottom:4px;display:flex;gap:8px;align-items:center}
+  .bubble img{max-width:100%;border-radius:10px;margin:8px 0;border:1px solid #26303f;display:block}
+  .bubble a{word-break:break-all}
+
+  /* markdown 内部排版 */
+  .md h1,.md h2,.md h3{margin:14px 0 8px;line-height:1.35}
+  .md h1{font-size:17px} .md h2{font-size:15.5px} .md h3{font-size:14px}
+  .md p{margin:7px 0}
+  .md ul,.md ol{margin:7px 0;padding-left:22px}
+  .md li{margin:3px 0}
+  .md code{background:#0e1622;color:#ffd28a;padding:1px 5px;border-radius:4px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.8px}
+  .md pre{background:#0d131d;border:1px solid #1e2a3a;border-radius:9px;padding:11px 13px;
+    overflow-x:auto;margin:9px 0}
+  .md pre code{background:none;padding:0;color:#c9d6ef;font-size:11.6px;line-height:1.65}
+  .md blockquote{margin:9px 0;padding:6px 12px;border-left:3px solid #3b5680;background:#141c2a;
+    border-radius:0 8px 8px 0;color:#b8c6dc}
+  .md table{border-collapse:collapse;margin:9px 0;font-size:12px;display:block;overflow-x:auto}
+  .md th,.md td{border:1px solid #26313f;padding:5px 9px;text-align:left}
+  .md th{background:#18212e}
+  .md hr{border:none;border-top:1px solid #232d3c;margin:12px 0}
+  .md strong{color:#fff}
+  .md .filechip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;
+    background:#111a27;border:1px solid #26313f;margin:4px 0;font-size:11.5px}
+
+  .srchit{border-bottom:1px solid #1a2330}
+  .srchit:last-child{border-bottom:none}
+  .srchit .snip{font-size:11.5px;color:#b3c1d6;margin-top:3px;line-height:1.6;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .srchit mark{background:#3a2f10;color:#ffd894;padding:0 1px;border-radius:2px}
+
+  .toast{position:fixed;right:20px;bottom:20px;max-width:440px;padding:11px 15px;border-radius:11px;
+    font-size:12.5px;display:none;z-index:50;box-shadow:0 20px 40px -22px #000}
+  .toast.bad{background:#2a1a1d;border:1px solid #5b2b31;color:#ffb9b6}
+  .toast.good{background:#12261a;border:1px solid #2b5b3a;color:#a8e6b8}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">CE</div>
+  <div class="brand">
+    <h1>ChatExporter</h1>
+    <p>对话归档 · 快照 · 全文检索</p>
+  </div>
+  <div class="grow"></div>
+  <div class="status" id="status"><i></i><span id="statusText">就绪</span></div>
+</header>
+
+<div class="wrap">
+  <!-- ============ 左：配置 ============ -->
+  <div>
+    <!-- Profile -->
+    <div class="card">
+      <div class="card-h"><span>数据位置（Profile）</span><span class="mini" id="profMini"></span></div>
+      <div class="card-b">
+        <div class="path" id="dataDir">加载中…</div>
+        <div class="kv">
+          <span>快照 <b id="kSnap">0</b></span>
+          <span>消息 <b id="kMsg">0</b></span>
+          <span>库大小 <b id="kSize">—</b></span>
+          <span>Markdown <b id="kMd">—</b></span>
+        </div>
+        <div class="row">
+          <button class="btn ghost sm" id="btnSwitch">切换目录</button>
+          <button class="btn ghost sm" id="btnRefresh">刷新</button>
+          <button class="btn ghost sm" id="btnReindex" title="新建的库会自动建；老库或索引损坏时点这个">重建索引</button>
+        </div>
+        <div class="ckeditor" id="switchBox" style="margin-top:9px">
+          <input id="switchPath" list="dirList" placeholder="绝对路径，例如 D:\ChatVault">
+          <datalist id="dirList"></datalist>
+          <div class="row">
+            <button class="btn sm" id="btnSwitchGo">切换</button>
+            <button class="btn ghost sm" id="btnSwitchCancel">取消</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cookie -->
+    <div class="card">
+      <div class="card-h"><span>凭据状态</span><button class="btn ghost sm" id="btnCheck">在线体检</button></div>
+      <div class="card-b" id="cookies"></div>
+    </div>
+
+    <!-- 导出 -->
+    <div class="card">
+      <div class="card-h"><span>新建导出</span><span class="mini" id="platHint"></span></div>
+      <div class="card-b">
+        <div class="platforms" id="platforms">
+          <div class="plat on" data-plat="mock"><div class="ico">🧪</div><div class="nm">模拟</div><div class="sub">无需凭据</div></div>
+          <div class="plat" data-plat="doubao"><div class="ico">🫘</div><div class="nm">豆包</div><div class="sub">需 Cookie</div></div>
+          <div class="plat" data-plat="openai"><div class="ico">✳️</div><div class="nm">ChatGPT</div><div class="sub">需 Cookie</div></div>
+        </div>
+        <label>快照标签</label>
+        <input id="label" placeholder="留空自动用时间">
+        <label>增量基准（可选）</label>
+        <select id="base"><option value="">不选 = 全量导出</option></select>
+        <button class="btn wide" id="startBtn">开始导出</button>
+        <div class="hint" id="exportHint">将使用该平台已保存的 Cookie；没有就在上方「凭据状态」里保存。</div>
+
+        <div class="progress" id="progress">
+          <div class="bar"><i id="barFill"></i></div>
+          <div class="metrics">
+            <span>会话 <b id="mDone">0</b>/<b id="mTotal">0</b></span>
+            <span>新消息 <b id="mMsgs">0</b></span>
+            <span>失败 <b id="mFail">0</b></span>
+            <span>耗时 <b id="mSec">0.0s</b></span>
+            <span style="grid-column:1/-1">有效字数 <b id="mChars">0</b></span>
+          </div>
+          <div class="recent" id="recent"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 中：搜索 / 快照 / 会话 ============ -->
+  <div class="card">
+    <div class="searchbox" style="display:flex;gap:7px">
+      <input id="q" placeholder="全文检索（中文子串，≥3 字走 FTS5）" style="flex:1">
+      <select id="platFilter" style="width:96px;flex:none">
+        <option value="">全部</option>
+        <option value="doubao">豆包</option>
+        <option value="openai">ChatGPT</option>
+        <option value="mock">模拟</option>
+      </select>
+    </div>
+    <div class="chips" id="chips"><span class="empty" style="padding:8px">还没有快照</span></div>
+    <ul class="list" id="convs"><li class="empty">选择上方快照查看会话</li></ul>
+  </div>
+
+  <!-- ============ 右：消息 ============ -->
+  <div class="card col-msg">
+    <div class="card-h"><span id="msgTitle">消息</span><span class="mini" id="msgHint"></span></div>
+    <div class="msgs" id="msgs"><div class="empty">选择一个会话<br><span style="font-size:11px">支持 Markdown、代码块、图片与附件</span></div></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   0) 小工具
+   ===================================================================== */
+const $ = (id) => document.getElementById(id);
+let platform = 'mock', activeSnapshot = null, es = null, currentConv = null;
+
+function toast(msg, ok) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (ok ? 'good' : 'bad');
+  t.style.display = 'block';
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.style.display = 'none'; }, 5200);
+}
+function setStatus(text, cls) {
+  $('statusText').textContent = text;
+  $('status').className = 'status' + (cls ? ' ' + cls : '');
+}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmtNum(n){n=Number(n||0);if(n>=1e8)return (n/1e8).toFixed(2)+' 亿';if(n>=1e4)return (n/1e4).toFixed(1)+' 万';return String(n);}
+function fmtSize(b){b=Number(b||0);if(!b)return '—';if(b>=1<<30)return (b/(1<<30)).toFixed(2)+' GB';if(b>=1<<20)return (b/(1<<20)).toFixed(1)+' MB';return Math.round(b/1024)+' KB';}
+async function api(url, opt) {
+  const r = await fetch(url, opt);
+  if (!r.ok) throw new Error((await r.text()) || ('HTTP ' + r.status));
+  return r.json();
+}
+
+/* =====================================================================
+   1) 极简 Markdown 渲染（无外部依赖，离线可用）
+     支持：标题/加粗/斜体/行内码/代码块/列表/引用/分隔线/表格/
+           链接/图片/裸 URL 自动成链
+   ===================================================================== */
+function mdToHtml(md) {
+  if (!md) return '';
+  const blocks = [];
+  md = md.replace(/```([\w+-]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    blocks.push(code);
+    return '\u0000B' + (blocks.length - 1) + '\u0000';
+  });
+
+  const inline = (s) => {
+    s = s.replace(/`([^`]+)`/g, (_, c) => '<code>' + c + '</code>');
+    // 图片必须在链接之前处理
+    s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g,
+      (_, alt, u) => `<img src="${u}" alt="${alt}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'filechip',textContent:'[图片加载失败] '+(this.alt||'')}))">`);
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,
+      (_, t, u) => `<a href="${u}" target="_blank" rel="noopener">${t}</a>`);
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, (_, p, c) => p + '<em>' + c + '</em>');
+    return s;
+  };
+
+  const out = [];
+  const lines = md.split('\n');
+  let i = 0;
+  while (i < lines.length) {
+    const raw = lines[i].replace(/\s+$/, '');
+    if (!raw) { i++; continue; }
+
+    const ph = raw.match(/^\u0000B(\d+)\u0000$/);
+    if (ph) {
+      out.push('<pre><code>' + esc(blocks[+ph[1]]) + '</code></pre>');
+      i++; continue;
+    }
+    const h = raw.match(/^(#{1,3})\s+(.*)$/);
+    if (h) { const l = h[1].length; out.push(`<h${l}>${inline(esc(h[2]))}</h${l}>`); i++; continue; }
+    if (/^\s*(---|\*\*\*|___)\s*$/.test(raw)) { out.push('<hr>'); i++; continue; }
+
+    // 表格
+    if (/^\s*\|/.test(raw)) {
+      const rows = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) { rows.push(lines[i].trim()); i++; }
+      const cells = rows.map(r => r.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim()));
+      let html = '<table>';
+      if (cells.length) {
+        html += '<thead><tr>' + cells[0].map(c => `<th>${inline(esc(c))}</th>`).join('') + '</tr></thead>';
+        const body = cells.slice(1).filter(r => !r.every(c => /^:?-{2,}:?$/.test(c.replace(/\s/g, ''))));
+        html += '<tbody>' + body.map(r => '<tr>' + r.map(c => `<td>${inline(esc(c))}</td>`).join('') + '</tr>').join('') + '</tbody>';
+      }
+      out.push(html + '</table>');
+      continue;
+    }
+    // 引用
+    if (/^\s*>/.test(raw)) {
+      const q = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) { q.push(lines[i].replace(/^\s*>\s?/, '')); i++; }
+      out.push('<blockquote>' + q.map(t => `<p>${inline(esc(t))}</p>`).join('') + '</blockquote>');
+      continue;
+    }
+    // 列表
+    if (/^\s*([-*]|\d+\.)\s+/.test(raw)) {
+      const ordered = /^\s*\d+\.\s+/.test(raw);
+      const tag = ordered ? 'ol' : 'ul';
+      const items = [];
+      while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*([-*]|\d+\.)\s+/, ''));
+        i++;
+      }
+      out.push(`<${tag}>` + items.map(t => `<li>${inline(esc(t))}</li>`).join('') + `</${tag}>`);
+      continue;
+    }
+    // 段落
+    const para = [];
+    while (i < lines.length && lines[i].trim() &&
+           !/^(#{1,3}\s|\u0000B\d+\u0000|\s*\||\s*>|\s*([-*]|\d+\.)\s)/.test(lines[i])) {
+      para.push(lines[i]);
+      i++;
+    }
+    if (para.length) out.push('<p>' + para.map(t => inline(esc(t))).join('<br>') + '</p>');
+    else i++;
+  }
+  return out.join('\n');
+}
+
+/* =====================================================================
+   2) Profile / Cookie
+   ===================================================================== */
+const CK_LABEL = { ok:'有效', expiring:'即将过期', expired:'已过期', missing:'未保存', unknown:'未验证', unreadable:'无法解析' };
+
+async function loadProfile() {
+  try {
+    const p = await api('/api/profile');
+    $('dataDir').textContent = p.dataDir;
+    $('kSnap').textContent = p.snapshotCount;
+    $('kMsg').textContent = fmtNum(p.messageCount);
+    $('kSize').textContent = fmtSize(p.dbSizeBytes);
+    $('kMd').textContent = p.snapshotCount + ' 份';
+    renderCookies(p.cookies || []);
+    renderSnapshots(p.snapshots || []);
+    return p;
+  } catch (e) {
+    $('dataDir').textContent = '读取失败：' + e.message;
+    toast('读取 profile 失败：' + e.message);
+  }
+}
+
+function renderCookies(list) {
+  const box = $('cookies');
+  if (!list.length) { box.innerHTML = '<div class="empty" style="padding:10px">无</div>'; return; }
+  box.innerHTML = list.map(c => {
+    const st = c.status || 'missing';
+    const sub = c.exists
+      ? (c.expiresAt ? ('过期时间 ' + c.expiresAt) : ('已保存 ' + fmtSize(c.sizeBytes) + ' · 过期时间未知'))
+      : '未保存（' + c.platform + '）';
+    return `<div class="ck">
+      <div class="nm">${c.platform === 'openai' ? 'ChatGPT' : '豆包'}<small>${esc(sub)}</small></div>
+      <span class="badge ${st}">${CK_LABEL[st] || st}</span>
+      <button class="btn ghost sm" data-ck="${c.platform}">编辑</button>
+    </div>
+    <div class="ckeditor" id="ed-${c.platform}">
+      <textarea id="ta-${c.platform}" placeholder="粘贴整条 Cookie（a=1; b=2; …）"></textarea>
+      <div class="row">
+        <button class="btn sm" data-save="${c.platform}">保存到本地</button>
+        <button class="btn ghost sm" data-cancel="${c.platform}">取消</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  box.querySelectorAll('[data-ck]').forEach(b => b.onclick = () => {
+    const el = $('ed-' + b.dataset.ck);
+    el.classList.toggle('on');
+  });
+  box.querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => {
+    $('ed-' + b.dataset.cancel).classList.remove('on');
+  });
+  box.querySelectorAll('[data-save]').forEach(b => b.onclick = async () => {
+    const p = b.dataset.save;
+    const v = $('ta-' + p).value.trim();
+    if (!v) { toast('Cookie 不能为空'); return; }
+    try {
+      const r = await api('/api/profile/cookie', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: p, cookie: v })
+      });
+      renderCookies(r.cookies || []);
+      toast('已保存到本地（不会进 git）', true);
+    } catch (e) {
+      toast('保存失败：' + e.message);
+    }
+  });
+}
+
+$('btnCheck').onclick = async () => {
+  $('btnCheck').disabled = true;
+  setStatus('体检中…', 'run');
+  try {
+    const r = await api('/api/profile/check', { method: 'POST' });
+    const ok = (r.results || []).filter(x => x.status === 'ok');
+    const bad = (r.results || []).filter(x => x.status === 'error');
+    if (bad.length) toast(bad[0].platform + '：' + bad[0].error);
+    else toast(ok.length ? ('在线可用：' + ok.map(x => x.platform + '(' + (x.plan || '') + ')').join(', '), true)
+                        : '没有可在线校验的凭据', true);
+    await loadProfile();
+  } catch (e) {
+    toast('体检失败：' + e.message);
+  } finally {
+    $('btnCheck').disabled = false;
+    setStatus('就绪');
+  }
+};
+
+$('btnSwitch').onclick = async () => {
+  $('switchBox').classList.toggle('on');
+  if ($('switchBox').classList.contains('on')) {
+    $('switchPath').value = $('dataDir').textContent;
+    try {
+      const dirs = await api('/api/profile/candidates');
+      $('dirList').innerHTML = dirs.map(d => `<option value="${esc(d)}">`).join('');
+    } catch (e) { /* 忽略 */ }
+  }
+};
+$('btnSwitchCancel').onclick = () => $('switchBox').classList.remove('on');
+$('btnSwitchGo').onclick = async () => {
+  const path = $('switchPath').value.trim();
+  if (!path) { toast('请输入目录'); return; }
+  try {
+    await api('/api/profile/activate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path })
+    });
+    $('switchBox').classList.remove('on');
+    activeSnapshot = null;
+    await loadProfile();
+    toast('已切换到 ' + path, true);
+  } catch (e) {
+    toast('切换失败：' + e.message);
+  }
+};
+$('btnReindex').onclick = async () => {
+  try {
+    const r = await api('/api/profile/reindex', { method: 'POST' });
+    toast('已在后台重建索引（' + r.messages + ' 条消息）', true);
+  } catch (e) { toast('重建失败：' + e.message); }
+};
+$('btnRefresh').onclick = () => { loadProfile(); if (activeSnapshot) openSnapshot(activeSnapshot); };
+
+/* =====================================================================
+   3) 快照 / 会话
+   ===================================================================== */
+const PLAT_LABEL = { mock: '模拟', doubao: '豆包', openai: 'ChatGPT' };
+
+function renderSnapshots(list) {
+  const box = $('chips');
+  if (!list.length) { box.innerHTML = '<span class="empty" style="padding:8px">还没有快照</span>'; return; }
+  box.innerHTML = list.map(s =>
+    `<div class="chip ${activeSnapshot === s.id ? 'on' : ''}" data-snap="${s.id}">
+       #${s.id} ${PLAT_LABEL[s.platform] || s.platform}<small>${s.conversation_count}会话</small>
+     </div>`).join('');
+  box.querySelectorAll('[data-snap]').forEach(c => c.onclick = () => openSnapshot(Number(c.dataset.snap)));
+
+  const base = $('base');
+  const keep = base.value;
+  base.innerHTML = '<option value="">不选 = 全量导出</option>' +
+    list.map(s => `<option value="${s.id}">#${s.id} ${esc((s.label || '').slice(0, 18))}</option>`).join('');
+  if (keep) base.value = keep;
+}
+
+async function openSnapshot(id) {
+  activeSnapshot = id;
+  document.querySelectorAll('[data-snap]').forEach(c =>
+    c.classList.toggle('on', Number(c.dataset.snap) === id));
+  $('q').value = '';
+  try {
+    const list = await api('/api/snapshots/' + id + '/conversations');
+    const ul = $('convs');
+    if (!list.length) { ul.innerHTML = '<li class="empty">这个快照没有会话</li>'; return; }
+    ul.innerHTML = list.map(c => `
+      <li data-id="${c.id}">
+        <div class="t">${esc(c.title || c.conv_key)}</div>
+        <div class="m"><span>${c.message_count} 条</span><span>${esc(c.conv_key).slice(0, 16)}</span></div>
+      </li>`).join('');
+    ul.querySelectorAll('li').forEach(li => li.onclick = () => openConversation(li, li.querySelector('.t').textContent));
+  } catch (e) { toast('读取会话失败：' + e.message); }
+}
+
+/* ---- 消息渲染：默认停在最新，向上滚动增量加载（游标分页 + DOM 上限）----
+   为什么不用「一次性渲染全部」：1739 条会话一次性生成几千个 DOM 节点，
+   浏览器要做一次巨大布局，滚动会明显掉帧甚至卡死。
+   这里模拟聊天软件的做法：先给最后一页，往上滚再取更早的一页，
+   并且维持 DOM 节点数上限（超出就从"更新的一侧"剪掉），保证长会话也稳定。 */
+const PAGE = 40;          // 每页条数
+const MAX_NODES = 700;    // DOM 上限，超出则从底部剪掉较新消息
+let msgState = { conv: null, oldestId: null, hasMore: false, loading: false, truncatedNewest: 0 };
+
+function msgHtml(m) {
+  const me = m.role === 'user';
+  const kind = m.kind || 'text';
+  const cls = kind === 'thinking' ? 'think' : (kind === 'tool' ? 'tool' : '');
+  const icon = me ? '🙋' : (kind === 'thinking' ? '💭' : (kind === 'tool' ? '🔧' : '🤖'));
+  const label = me ? '我' : (kind === 'thinking' ? '思考' : (kind === 'tool' ? '工具' : '助手'));
+  return `<div class="msg ${me ? 'me' : ''}" data-id="${m.id}">
+    <div class="ava">${icon}</div>
+    <div class="bubble ${cls}">
+      <div class="meta"><span>${label}</span><span>#${m.seq}</span></div>
+      <div class="md">${mdToHtml(m.content || '')}</div>
+    </div>
+  </div>`;
+}
+
+function trimNewest(box) {
+  const nodes = box.querySelectorAll('.msg');
+  if (nodes.length <= MAX_NODES) return;
+  const drop = nodes.length - MAX_NODES;
+  for (let i = 0; i < drop; i++) nodes[nodes.length - 1 - i].remove();
+  msgState.truncatedNewest += drop;
+  let hint = box.querySelector('.trim-hint');
+  if (!hint) {
+    hint = document.createElement('div');
+    hint.className = 'empty trim-hint';
+    hint.style.padding = '10px';
+    box.appendChild(hint);
+  }
+  hint.textContent = '… 已折叠较新的 ' + msgState.truncatedNewest + ' 条（重新打开会话即可回到最新）';
+}
+
+async function openConversation(li, title) {
+  document.querySelectorAll('#convs li').forEach(x => x.classList.remove('on'));
+  if (li) li.classList.add('on');
+  const rowId = li ? li.dataset.id : currentConv;
+  currentConv = rowId;
+  $('msgTitle').textContent = title || '消息';
+
+  msgState = { conv: rowId, oldestId: null, hasMore: false, loading: false, truncatedNewest: 0 };
+  const box = $('msgs');
+  box.innerHTML = '<div class="empty">加载中…</div>';
+
+  try {
+    const r = await api('/api/conversations/' + rowId + '/messages?limit=' + PAGE);
+    if (!r.items.length) { box.innerHTML = '<div class="empty">没有消息</div>'; return; }
+    box.innerHTML = r.items.map(msgHtml).join('');
+    msgState.oldestId = r.items[0].id;
+    msgState.hasMore = r.hasMore;
+    $('msgHint').textContent = '最新 ' + r.items.length + ' / 共 ' + r.total + ' 条';
+    box.scrollTop = box.scrollHeight;      // ★ 默认停在最新
+  } catch (e) {
+    box.innerHTML = '<div class="empty">读取失败</div>';
+    toast('读取消息失败：' + e.message);
+  }
+}
+
+// 向上滚动到接近顶部时，自动加载更早的一页
+$('msgs').addEventListener('scroll', async () => {
+  const box = $('msgs');
+  if (box.scrollTop > 90 || !msgState.hasMore || msgState.loading || !msgState.conv) return;
+  msgState.loading = true;
+  const prevHeight = box.scrollHeight;
+  try {
+    const r = await api('/api/conversations/' + msgState.conv + '/messages?before='
+      + msgState.oldestId + '&limit=' + PAGE);
+    if (r.items.length) {
+      box.insertAdjacentHTML('afterbegin', r.items.map(msgHtml).join(''));
+      msgState.oldestId = r.items[0].id;
+      box.scrollTop = box.scrollHeight - prevHeight;   // 保持视觉位置不跳
+      trimNewest(box);
+    }
+    msgState.hasMore = r.hasMore;
+    $('msgHint').textContent = '已加载 ' + box.querySelectorAll('.msg').length + ' / 共 ' + r.total + ' 条';
+  } catch (e) {
+    toast('加载更早消息失败：' + e.message);
+  } finally {
+    msgState.loading = false;
+  }
+});
+
+/* =====================================================================
+   4) 搜索
+   ===================================================================== */
+let searchTimer = null;
+if ($('platFilter')) $('platFilter').addEventListener('change', () => {
+  const v = $('q').value.trim();
+  if (v) doSearch(v); else if (activeSnapshot) openSnapshot(activeSnapshot);
+});
+$('q').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  const v = $('q').value.trim();
+  if (!v) { if (activeSnapshot) openSnapshot(activeSnapshot); return; }
+  searchTimer = setTimeout(() => doSearch(v), 320);
+});
+
+function renderSnip(snip, q) {
+  let s = esc(snip || '');
+  s = s.replace(/\u0001/g, '<mark>').replace(/\u0002/g, '</mark>');   // FTS 片段标记
+  if (q && s.indexOf('<mark>') === -1) {                                // LIKE 片段：手动高亮
+    const safeQ = esc(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (safeQ) s = s.replace(new RegExp(safeQ, 'gi'), m => '<mark>' + m + '</mark>');
+  }
+  return s;
+}
+
+async function doSearch(q) {
+  try {
+    const plat = $('platFilter') ? $('platFilter').value : '';
+    const url = '/api/search?q=' + encodeURIComponent(q)
+      + (activeSnapshot ? '&snapshotId=' + activeSnapshot : '')
+      + (plat ? '&platform=' + plat : '')
+      + '&limit=60';
+    const r = await api(url);
+    const ul = $('convs');
+    $('msgHint').textContent = '';
+    if (!r.items.length) {
+      ul.innerHTML = '<li class="empty">没有匹配<br><span style="font-size:11px">' + r.tookMs + ' ms</span></li>';
+      return;
+    }
+    ul.innerHTML = r.items.map(it => `
+      <li class="srchit" data-id="${it.conversation_id}" data-seq="${it.seq}">
+        <div class="t">${esc(it.title || '(无标题)')}</div>
+        <div class="m"><span>${PLAT_LABEL[it.platform] || it.platform}</span><span>${it.role === 'user' ? '我' : '助手'}</span><span>#${it.seq}</span><span>快照 #${it.snapshot_id}</span></div>
+        <div class="snip">${renderSnip(it.snip, q)}</div>
+      </li>`).join('');
+    ul.querySelectorAll('li').forEach(li => li.onclick = async () => {
+      await openConversation(li, li.querySelector('.t').textContent);
+      const seq = li.dataset.seq;
+      // 滚到命中那条
+      const target = [...document.querySelectorAll('#msgs .bubble .meta')]
+        .find(x => x.textContent.includes('#' + seq));
+      if (target) target.closest('.msg').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    toast('命中 ' + r.total + ' 条（' + (r.mode || '') + '），用时 ' + r.tookMs + ' ms', true);
+  } catch (e) {
+    toast('搜索失败：' + e.message);
+  }
+}
+
+/* =====================================================================
+   5) 导出
+   ===================================================================== */
+const GUIDES = {
+  mock:   '内置演示数据，不需要凭据',
+  doubao: '使用 data/cookie-doubao.txt（含 sessionid）',
+  openai: '使用 data/cookie-openai.txt（含 session-token）'
+};
+function selectPlatform(p) {
+  platform = p;
+  document.querySelectorAll('.plat').forEach(el => el.classList.toggle('on', el.dataset.plat === p));
+  $('platHint').textContent = p === 'mock' ? '无需凭据' : '需 Cookie';
+  $('exportHint').textContent = GUIDES[p];
+}
+document.querySelectorAll('.plat').forEach(el => el.onclick = () => selectPlatform(el.dataset.plat));
+
+$('startBtn').onclick = async () => {
+  $('startBtn').disabled = true;
+  $('progress').classList.add('on');
+  $('recent').innerHTML = '';
+  $('barFill').style.width = '0%';
+  setStatus('导出中…', 'run');
+  try {
+    const base = $('base').value;
+    const r = await api(base ? '/api/export/incremental' : '/api/export/full', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        platform, label: $('label').value.trim(), cookie: null,
+        baseSnapshotId: base ? Number(base) : null
+      })
+    });
+    subscribe(r.jobId);
+  } catch (e) {
+    toast('启动失败：' + e.message);
+    $('startBtn').disabled = false;
+    setStatus('失败', 'err');
+  }
+};
+
+function subscribe(jobId) {
+  if (es) es.close();
+  es = new EventSource('/api/export/jobs/' + jobId + '/stream');
+  es.addEventListener('state', e => render(JSON.parse(e.data)));
+  es.addEventListener('progress', e => render(JSON.parse(e.data)));
+}
+
+function render(j) {
+  const pct = j.total ? Math.round(j.done * 100 / j.total) : 0;
+  $('barFill').style.width = pct + '%';
+  $('mDone').textContent = j.done;
+  $('mTotal').textContent = j.total;
+  $('mMsgs').textContent = j.messages;
+  $('mFail').textContent = j.failed;
+  $('mSec').textContent = ((j.elapsedMs || 0) / 1000).toFixed(1) + 's';
+  $('mChars').textContent = fmtNum(j.effectiveChars || 0);
+  setStatus(j.phase || j.status, j.status === 'RUNNING' ? 'run' : (j.status === 'DONE' ? 'ok' : 'err'));
+  $('recent').innerHTML = (j.recent || []).map(s => '<div>' + esc(s) + '</div>').join('');
+
+  if (j.status === 'DONE') {
+    $('startBtn').disabled = false;
+    if (es) { es.close(); es = null; }
+    toast('导出完成：' + j.done + ' 会话 / ' + j.messages + ' 消息', true);
+    loadProfile();
+  }
+  if (j.status === 'FAILED') {
+    $('startBtn').disabled = false;
+    if (es) { es.close(); es = null; }
+    toast('导出失败：' + (j.error || '未知错误'));
+  }
+}
+
+/* ---- 启动（支持深链：?snapshot=3&conversation=123）---- */
+selectPlatform('mock');
+loadProfile().then(async () => {
+  const p = new URLSearchParams(location.search);
+  const snap = p.get('snapshot');
+  const conv = p.get('conversation');
+  if (snap) {
+    await openSnapshot(Number(snap));
+    if (conv) {
+      const li = document.querySelector('#convs li[data-id="' + conv + '"]');
+      if (li) li.click();
+    }
+  }
+});
+</script>
+</body>
+</html>
