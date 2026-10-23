@@ -1,0 +1,25 @@
+name: 功能建议
+description: 新平台适配、检索增强、界面改进
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决什么问题
+      description: 先说场景，再说方案
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你的想法（可选）
+      description: 例如"新增 Claude 适配器，需要实现 ChatPlatformAdapter 的哪几个方法"
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 影响范围（大概判断）
+      options:
+        - label: 适配器（adapter/）
+        - label: 检索（service/SearchService）
+        - label: 界面（static/index.html）
+        - label: 存储/迁移（repository/）

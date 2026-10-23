@@ -1,0 +1,35 @@
+name: Bug 报告
+description: 导出失败、界面异常、数据不对
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提问前请先确认：**不要粘贴 Cookie / Token / 完整消息正文**。
+        需要贴日志时，把 `data/logs/` 里的关键几行贴出来，并自行打码。
+  - type: input
+    id: platform
+    attributes:
+      label: 平台
+      placeholder: doubao / openai / mock
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      placeholder: Windows 11 + JDK 17 + Spring Boot 4.1.1
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 现象
+      description: 期望什么、实际什么
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志（已打码）
+      render: shell
