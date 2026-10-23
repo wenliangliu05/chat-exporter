@@ -42,18 +42,6 @@ public class ProfileController {
         return profiles.saveCookie(req.platform(), req.cookie());
     }
 
-    /** 本地记忆：上次的目录 / 平台 / 快照 / 会话 */
-    @GetMapping("/settings")
-    public Map<String, Object> settings() {
-        return profiles.settingsView();
-    }
-
-    /** 更新界面状态（只写本地用户目录，不入库、不联网） */
-    @PostMapping("/settings")
-    public Map<String, Object> updateSettings(@RequestBody Map<String, Object> patch) {
-        return profiles.updateSettings(patch);
-    }
-
     @PostMapping("/reindex")
     public Map<String, Object> reindex() {
         return profiles.reindex();
