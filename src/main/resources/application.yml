@@ -25,7 +25,14 @@ app:
   request-interval-ms: 300
   max-pages: 200
   queue:
-    enabled: true                   # false = 退回本地线程池（测试/无 broker 时）
+    enabled: true
+
+  # 图片/附件：导出时下载到 <profile>/assets/<snapshotId>/，正文改写成本地路径
+  # 失败（超时/404/超限）则保留原链接，不阻断导出
+  assets:
+    enabled: true
+    max-bytes: 20971520     # 单文件 20MB 上限
+    timeout-ms: 15000                   # false = 退回本地线程池（测试/无 broker 时）
   doubao:
     cookie: ""                      # 留空则自动读 data/cookie-doubao.txt → data/cookie.txt
     cookie-file: ./data/cookie-doubao.txt

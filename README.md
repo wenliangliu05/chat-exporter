@@ -16,6 +16,8 @@
 - 📸 **快照式导出**：每次导出生成新快照，历史永不覆盖；支持基于旧快照的**增量导出**
 - 🔍 **中文全文检索**：SQLite FTS5 + trigram 分词，2 万条消息 20ms 出结果
 - 💬 **原样浏览**：聊天气泡 + 完整 Markdown（代码块 / 表格 / 图片）+ 向上滚动加载更早消息
+- 🖼️ **附件落盘**：图片/附件在导出时下载到 `assets/`，正文改成本地路径 —— 平台签名链接过期也不怕
+- 🔎 **1~2 字也能搜**：字符级 FTS 索引（短语查询）+ trigram 索引，中文短词 20ms 级
 - 🚀 **并发抓取**：RabbitMQ 每会话一条任务消息，可配置并发数，带限速与失败隔离
 - 📊 **可度量**：每次导出记录耗时、会话数、消息数、有效字数
 
@@ -210,7 +212,8 @@ scripts\setup-hooks.cmd         # Windows
 | GET | `/api/snapshots` | 快照列表（含耗时、字数）|
 | GET | `/api/snapshots/{id}/conversations` | 会话列表 |
 | GET | `/api/conversations/{rowId}/messages?before=&limit=` | 消息分页（游标 = 消息 id）|
-| GET | `/api/search?q=&snapshotId=&platform=` | 全文检索 |
+| GET | `/api/search?q=&snapshotId=&platform=` | 全文检索（≥3 字走 trigram，1~2 字走字符索引）|
+| GET | `/api/assets/{snapshotId}/{file}` | 已落盘的图片/附件 |
 | GET | `/api/profile` | 数据目录、库大小、快照数、Cookie 状态 |
 | POST | `/api/profile/activate` | 切换数据目录 `{path}` |
 | POST | `/api/profile/cookie` | 保存 Cookie `{platform,cookie}` |
@@ -226,7 +229,7 @@ scripts\setup-hooks.cmd         # Windows
 ├── snapshot.db          SQLite：snapshot / conversation / message / message_fts
 ├── markdown/
 │   └── snapshot-<id>/   每个会话一份 .md（含角色、思考块、工具调用）
-├── assets/              预留：图片与附件
+├── assets/<snapshotId>/ 图片与附件（导出时下载，文件名 = URL 的 sha1）
 ├── cookie-<platform>.txt
 └── logs/
 ```
@@ -237,7 +240,8 @@ scripts\setup-hooks.cmd         # Windows
 
 ## 已知限制
 
-- 图片/附件目前只记录链接，不下载二进制；链接过期后会显示占位，需要重新导一次
+- 附件只对 `![](url)` 与 `[附件](url)` 两种明确写法落盘；正文里随口提到的普通网址不会下载
+- ChatGPT 的图片是 `file-service://` 指针（不是公网 URL），目前仍只能记占位
 - 增量导出以「会话为单位」探测：仍会对每个会话发一次请求确认有无新消息
 - 单个会话的增量锚点是消息序号/时间戳，若平台侧删改历史，可能出现重复或遗漏
 - ChatGPT 的对话是树结构，当前只导出 `current_node` 这一条主线（不含编辑分支）
@@ -245,8 +249,9 @@ scripts\setup-hooks.cmd         # Windows
 
 ## Roadmap
 
-- [ ] 附件落盘（`assets/`）+ Markdown 本地链接
-- [ ] n-gram 倒排 + embedding 向量检索（语义搜"意思相近"）
+- [x] 附件落盘（`assets/`）+ Markdown 本地链接
+- [x] 中文短词（1~2 字）索引加速
+- [ ] embedding 向量检索（语义搜"意思相近"）
 - [ ] 更多平台适配器（Claude / Gemini）
 - [ ] 快照 diff 视图（这次比上次多了哪些对话）
 

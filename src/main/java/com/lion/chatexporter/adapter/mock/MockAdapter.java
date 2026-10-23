@@ -62,7 +62,12 @@ public class MockAdapter implements ChatPlatformAdapter {
             out.add(Message.of(++seq, "assistant", "text",
                     topic[1] + "\n\n（第 " + (round + 1) + " 轮回答，用于验证多轮对话的渲染效果。）"));
             out.add(Message.of(++seq, "assistant", "tool",
-                    "[工具调用] search(query=\"" + topic[0] + "\") → 3 条结果"));
+                     "[工具调用] search(query=\"" + topic[0] + "\") → 3 条结果"));
+            if (round == 2) {
+                // 带一张真实图片：用于验证「附件落盘」链路（下载 → assets/ → 正文改本地路径）
+                out.add(Message.of(++seq, "assistant", "text",
+                        "这里放一张图验证渲染：\n\n![示例图片](https://www.python.org/static/img/python-logo.png)"));
+            }
         }
         if (sinceSeq >= 0) {
             out.removeIf(m -> m.seq() <= sinceSeq);

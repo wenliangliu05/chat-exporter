@@ -61,9 +61,18 @@ public class SearchService {
         String mode;
 
         if (query.length() < 3) {
-            mode = "like(短词)";
-            rows = likeQuery(jdbc, query, snapshotId, plat, cap);
-            total = likeCount(jdbc, query, snapshotId, plat);
+            try {
+                // 2 字：字符索引 + 短语查询（"内 存"），比全表 LIKE 快两个数量级
+                mode = "char-index(短词)";
+                String phrase = charPhrase(query);
+                rows = charQuery(jdbc, phrase, query, snapshotId, plat, cap);
+                total = charCount(jdbc, phrase, snapshotId, plat);
+            } catch (Exception e) {
+                log.warn("字符索引不可用，短词降级 LIKE（{}）", e.getMessage());
+                mode = "like(降级)";
+                rows = likeQuery(jdbc, query, snapshotId, plat, cap);
+                total = likeCount(jdbc, query, snapshotId, plat);
+            }
         } else {
             try {
                 mode = "fts";
@@ -121,7 +130,63 @@ public class SearchService {
         return jdbc.queryForObject(sql.toString(), Integer.class, args.toArray());
     }
 
-    // ---------------- LIKE 路径（短词 / 降级） ----------------
+    // ---------------- 字符索引路径（<3 字） ----------------
+
+    /** "内存" → "\"内 存\""：FTS5 短语查询，要求两个字相邻出现 */
+    private String charPhrase(String q) {
+        StringBuilder sb = new StringBuilder(q.length() * 2 + 2).append('"');
+        for (int i = 0; i < q.length(); i++) {
+            char c = q.charAt(i);
+            if (Character.isWhitespace(c)) {
+                continue;
+            }
+            if (sb.length() > 1) {
+                sb.append(' ');
+            }
+            sb.append(c);
+        }
+        return sb.append('"').toString();
+    }
+
+    private List<Map<String, Object>> charQuery(JdbcTemplate jdbc, String phrase, String raw,
+                                                Long snapshotId, String plat, int cap) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT m.id, m.seq, m.role, m.kind, m.conversation_id, c.title,
+                       c.snapshot_id, s.platform,
+                       CASE WHEN instr(m.content, ?) > 0
+                            THEN substr(m.content, max(1, instr(m.content, ?) - 50), 180)
+                            ELSE substr(m.content, 1, 180) END AS snip
+                FROM message_fts_char
+                JOIN message m ON m.id = message_fts_char.rowid
+                JOIN conversation c ON c.id = m.conversation_id
+                JOIN snapshot s ON s.id = c.snapshot_id
+                WHERE message_fts_char MATCH ?
+                """);
+        List<Object> args = new ArrayList<>();
+        args.add(raw);
+        args.add(raw);
+        args.add(phrase);
+        appendScope(sql, args, snapshotId, plat);
+        sql.append(" ORDER BY rank LIMIT ?");
+        args.add(cap);
+        return jdbc.queryForList(sql.toString(), args.toArray());
+    }
+
+    private Integer charCount(JdbcTemplate jdbc, String phrase, Long snapshotId, String plat) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT COUNT(*) FROM message_fts_char
+                JOIN message m ON m.id = message_fts_char.rowid
+                JOIN conversation c ON c.id = m.conversation_id
+                JOIN snapshot s ON s.id = c.snapshot_id
+                WHERE message_fts_char MATCH ?
+                """);
+        List<Object> args = new ArrayList<>();
+        args.add(phrase);
+        appendScope(sql, args, snapshotId, plat);
+        return jdbc.queryForObject(sql.toString(), Integer.class, args.toArray());
+    }
+
+    // ---------------- LIKE 路径（降级兜底） ----------------
 
     private List<Map<String, Object>> likeQuery(JdbcTemplate jdbc, String q, Long snapshotId, String plat, int cap) {
         StringBuilder sql = new StringBuilder("""

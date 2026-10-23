@@ -81,7 +81,8 @@ public class MarkdownWriter {
 
         try {
             Files.createDirectories(file.getParent());
-            Files.writeString(file, sb.toString(), StandardCharsets.UTF_8);
+            // 落盘路径改成相对路径：导出的 .md 单独拷走也能显示图片
+        Files.writeString(file, sb.toString().replace("/api/assets/", "../assets/"), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new IllegalStateException("写 Markdown 失败: " + file, e);
         }

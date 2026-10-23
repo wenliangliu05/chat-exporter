@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "app.platform=mock",
         "app.concurrency=3",
         "app.request-interval-ms=0",
+        "app.assets.enabled=false",   // 单测不联网：附件落盘由本地手动验证
         "logging.file.name=./target/test-data/logs/test.log",
         "app.queue.enabled=false",
         "spring.rabbitmq.listener.simple.auto-startup=false"
@@ -50,7 +51,10 @@ class MockExportTest {
 
         Object rowId = convs.get(0).get("id");
         List<Map<String, Object>> msgs = repo.findMessages(((Number) rowId).longValue());
-        assertEquals(12, msgs.size(), "每个会话 12 条消息");
+        // 3 轮 × (问 + 思考 + 答 + 工具) = 12，外加最后一条带图片的消息 = 13
+        assertEquals(13, msgs.size(), "每个会话 13 条消息（含 1 条图片消息）");
+        assertTrue(msgs.stream().anyMatch(m -> String.valueOf(m.get("content")).contains("![示例图片]")),
+                "应包含图片消息，用于验证附件链路");
         assertTrue(msgs.stream().anyMatch(m -> "thinking".equals(m.get("kind"))), "应包含思考块");
     }
 }

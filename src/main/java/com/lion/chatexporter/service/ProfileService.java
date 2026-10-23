@@ -229,7 +229,7 @@ public class ProfileService {
      public Map<String, Object> reindex() {
          Integer msgs = ctx.jdbc().queryForObject("SELECT COUNT(*) FROM message", Integer.class);
          int n = msgs == null ? 0 : msgs;
-         com.lion.chatexporter.repository.Schema.rebuildAsync(ctx.jdbc(), n);
+         com.lion.chatexporter.repository.Schema.rebuildTrigramAsync(ctx.jdbc(), n);
          return Map.of("started", true, "messages", n);
      }
 

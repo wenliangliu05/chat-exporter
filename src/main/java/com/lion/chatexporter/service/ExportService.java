@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -59,6 +60,7 @@ public class ExportService {
     private final Executor exportExecutor;
     private final RabbitTemplate rabbit;
     private final ProfileContext profile;
+    private final AssetService assets;
     private final ExecutorService localPool;
 
     /** jobId → 抓取上下文（cookie/限速）。放在内存里，避免每条消息都携带 4KB Cookie */
@@ -73,7 +75,8 @@ public class ExportService {
                          AppProperties props,
                          @Qualifier("exportExecutor") Executor exportExecutor,
                          RabbitTemplate rabbit,
-                         ProfileContext profile) {
+                         ProfileContext profile,
+                         AssetService assets) {
         this.adapters = adapters;
         this.repo = repo;
         this.markdown = markdown;
@@ -82,6 +85,7 @@ public class ExportService {
         this.exportExecutor = exportExecutor;
         this.rabbit = rabbit;
         this.profile = profile;
+        this.assets = assets;
         this.localPool = Executors.newFixedThreadPool(Math.max(1, props.concurrency()));
     }
 
@@ -172,6 +176,32 @@ public class ExportService {
 
     // ==================== 单个会话（消费者调用） ====================
 
+    /**
+     * 图片/附件落盘：把正文里的临时 CDN 链接换成本地 {@code /api/assets/...}。
+     *
+     * <p>放在"抓取之后、入库之前"这一步，好处是：
+     * 数据库、Markdown、界面看到的都是同一个本地路径，不会出现三处不一致。
+     */
+    private List<Message> localizeAssets(long snapshotId, List<Message> messages, AdapterContext ctx) {
+        if (!assets.enabled() || messages.isEmpty()) {
+            return messages;
+        }
+        List<Message> out = new ArrayList<>(messages.size());
+        int changed = 0;
+        for (Message m : messages) {
+            String content = m.content() == null ? "" : m.content();
+            String localized = assets.localize(snapshotId, content, ctx);
+            if (!localized.equals(content)) {
+                changed++;
+            }
+            out.add(Message.of(m.seq(), m.role(), m.kind(), localized));
+        }
+        if (changed > 0) {
+            log.info("会话快照#{}：{} 条消息的附件已落盘", snapshotId, changed);
+        }
+        return out;
+    }
+
     public void handleTask(SessionTask task) {
         ExportJob job = jobs.get(task.jobId());
         AdapterContext ctx = contexts.get(task.jobId());
@@ -181,6 +211,7 @@ public class ExportService {
         try {
             ChatPlatformAdapter adapter = adapterFor(job.platform());
             List<Message> messages = adapter.fetchMessages(ctx, task.convKey(), task.sinceSeq());
+        messages = localizeAssets(task.snapshotId(), messages, ctx);
 
             Long rowId = repo.findConversationRow(task.snapshotId(), task.convKey());
             if (rowId == null) {

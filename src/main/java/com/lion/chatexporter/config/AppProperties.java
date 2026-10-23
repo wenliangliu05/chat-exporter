@@ -17,9 +17,13 @@ public record AppProperties(
         int maxPages,
         Queue queue,
         Doubao doubao,
-        OpenAi openai
+        OpenAi openai,
+        Assets assets
 ) {
     public record Queue(boolean enabled) {}
+
+    /** 图片/附件落盘策略：下载到 <profile>/assets/<snapshotId>/，正文换成本地路径 */
+    public record Assets(boolean enabled, long maxBytes, int timeoutMs) {}
 
     public record Doubao(
             String cookie,

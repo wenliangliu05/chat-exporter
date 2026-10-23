@@ -83,21 +83,23 @@ public class SnapshotRepository {
             return;
         }
         jdbc().batchUpdate(
-                "INSERT INTO message(conversation_id, seq, role, kind, content, created_at) VALUES (?,?,?,?,?,?)",
+                "INSERT INTO message(conversation_id, seq, role, kind, content, chars, created_at) "
+                + "VALUES (?,?,?,?,?,?,?)",
                 messages, 500, (ps, m) -> {
                     ps.setLong(1, convRowId);
                     ps.setLong(2, m.seq());
                     ps.setString(3, m.role());
                     ps.setString(4, m.kind());
                     ps.setString(5, m.content());
-                    ps.setString(6, Instant.now().toString());
+                    ps.setString(6, Schema.toChars(m.content()));   // 字符级索引用的辅助列
+                    ps.setString(7, Instant.now().toString());
                 });
     }
 
     public synchronized int copyMessages(long newConvRowId, long oldConvRowId) {
         return jdbc().update("""
-                INSERT INTO message(conversation_id, seq, role, kind, content, created_at)
-                SELECT ?, seq, role, kind, content, created_at
+                INSERT INTO message(conversation_id, seq, role, kind, content, chars, created_at)
+                SELECT ?, seq, role, kind, content, chars, created_at
                 FROM message WHERE conversation_id=? ORDER BY seq""",
                 newConvRowId, oldConvRowId);
     }
